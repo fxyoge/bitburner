@@ -154,6 +154,14 @@ export class ReservationBook {
         return availability;
     }
 
+    private delete(id: number) : void {
+        for (let i = this.events.length - 1; i >= 0; i--) {
+            if (this.events[i].id === id) {
+                this.events.splice(i, 1);
+            }
+        }
+    }
+
     schedule(proposition: Proposition): ScheduleToken | null {
         if (proposition.events.length === 0) {
             return {
@@ -218,11 +226,7 @@ export class ReservationBook {
                     }
     
                     this.setTimeout(() => {
-                        for (let i = this.events.length - 1; i >= 0; i--) {
-                            if (this.events[i].id === id) {
-                                this.events.splice(i, 1);
-                            }
-                        }
+                        this.delete(id);
                     }, Math.max(0, start - now + reservation.events[reservation.events.length - 1].offset));
                     this.nextId++;
     
