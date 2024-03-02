@@ -1,5 +1,4 @@
 type Resources = {
-    cpu: number;
     ram: number;
     hacks: number;
 };
@@ -37,7 +36,6 @@ type ScheduleToken = {
 
 function getZeroResources(): Resources {
     return {
-        cpu: 0,
         ram: 0,
         hacks: 0,
     };
@@ -67,7 +65,7 @@ export class ReservationBook {
         st?: (callback: () => void, ms?: number) => void,
         gt?: () => number,
         log?: (format: string, ...values: any[]) => void) {
-        this.setTimeout = st ?? setTimeout;
+        this.setTimeout = st ?? ((c, ms) => setTimeout(c, ms));
         this.getTime = gt ?? (() => new Date().getTime());
         this.log = log ?? ((format, ...values) => {});
     }
@@ -168,15 +166,15 @@ export class ReservationBook {
 
         for (let i = 0; i < proposition.events.length; i++) {
             if (proposition.events[i].offset < 0) {
-                this.log("reservation '%s' attempted with negative offset", proposition.name);
+                this.log("RVB|%s attempted with negative offset", proposition.name);
                 return null;
             } else if (i === 0) {
                 if (proposition.events[i].offset > 0) {
-                    this.log("reservation '%s' attempted with non-zero initial offset", proposition.name);
+                    this.log("RVB|%s attempted with non-zero initial offset", proposition.name);
                     return null;
                 }
             } else if (proposition.events[i].offset < proposition.events[i - 1].offset) {
-                this.log("reservation '%s' is not sorted ascending by offset", proposition.name);
+                this.log("RVB|%s is not sorted ascending by offset", proposition.name);
                 return null;
             }
         }
@@ -196,36 +194,49 @@ export class ReservationBook {
         return {
             availability: availability,
             claim: (start) => {
-                if (!this.check(start, reservation)) {
-                    return false;
-                }
-
-                const id = this.nextId;
-
-                const now = this.getTime();
-                for (const event of reservation.events) {
-                    this.events.push({
-                        id: id,
-                        time: start + event.offset,
-                        resources: { ...event.resources }
-                    });
-                    this.events.sort((a, b) => a.time - b.time);
-                    const action = event.action;
-                    if (action != null) {
-                        this.setTimeout(() => action(), Math.max(0, start - now + event.offset));
+                try {
+                    if (!this.check(start, reservation)) {
+                        return false;
                     }
-                }
-
-                this.setTimeout(() => {
-                    for (let i = this.events.length - 1; i >= 0; i--) {
-                        if (this.events[i].id === id) {
-                            this.events.splice(i, 1);
+    
+                    const id = this.nextId;
+    
+                    const now = this.getTime();
+                    for (const event of reservation.events) {
+                        this.events.push({
+                            id: id,
+                            time: start + event.offset,
+                            resources: { ...event.resources }
+                        });
+                        this.events.sort((a, b) => a.time - b.time);
+                        const action = event.action;
+                        if (action != null) {
+                            const ms = Math.max(0, start - now + event.offset);
+                            this.log("RVB|%s scheduled in %d ms", proposition.name, ms);
+                            this.setTimeout(() => action(), ms);
                         }
                     }
-                }, Math.max(0, start - now + reservation.events[reservation.events.length - 1].offset));
-                this.nextId++;
-
-                return true;
+    
+                    this.setTimeout(() => {
+                        for (let i = this.events.length - 1; i >= 0; i--) {
+                            if (this.events[i].id === id) {
+                                this.events.splice(i, 1);
+                            }
+                        }
+                    }, Math.max(0, start - now + reservation.events[reservation.events.length - 1].offset));
+                    this.nextId++;
+    
+                    return true;
+                } catch (err: any) {
+                    this.log("RVB|%s errored: %s", reservation.name, err);
+                    if ("stack" in err && err.stack) {
+                        this.log("RVB|stack: %s", err.stack);
+                    }
+                    if ("cause" in err && err.cause) {
+                        this.log("RVB|cause: %s", err.cause);
+                    }
+                    return false;
+                }
             }
         };
     }
