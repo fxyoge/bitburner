@@ -179,6 +179,7 @@ it("two blocks scheduled next to each other", () => {
 
     expect(queue.events[0].ms).toBe(200);
     expect(queue.events[1].ms).toBe(600);
+    expect(queue.events[2].ms).toBe(600);
 
     const tokenB = book.schedule({
         name: "oranges 2",
@@ -192,8 +193,9 @@ it("two blocks scheduled next to each other", () => {
     const claimedB = tokenB?.claim(600);
     expect(claimedB).toBeTruthy();
 
-    expect(queue.events[2].ms).toBe(600);
-    expect(queue.events[3].ms).toBe(1000);
+    expect(queue.events[3].ms).toBe(600);
+    expect(queue.events[4].ms).toBe(1000);
+    expect(queue.events[5].ms).toBe(1000);
 });
 
 it("two blocks scheduled next to each other, in reverse order", () => {
@@ -220,6 +222,7 @@ it("two blocks scheduled next to each other, in reverse order", () => {
 
     expect(queue.events[0].ms).toBe(600);
     expect(queue.events[1].ms).toBe(1000);
+    expect(queue.events[2].ms).toBe(1000);
 
     const tokenB = book.schedule({
         name: "oranges 3",
@@ -233,8 +236,9 @@ it("two blocks scheduled next to each other, in reverse order", () => {
     const claimedB = tokenB?.claim(200);
     expect(claimedB).toBeTruthy();
 
-    expect(queue.events[2].ms).toBe(200);
-    expect(queue.events[3].ms).toBe(600);
+    expect(queue.events[3].ms).toBe(200);
+    expect(queue.events[4].ms).toBe(600);
+    expect(queue.events[5].ms).toBe(600);
 });
 
 // it("generates a block with contention", () => {

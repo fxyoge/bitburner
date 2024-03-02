@@ -200,10 +200,12 @@ export class ReservationBook {
                     return false;
                 }
 
+                const id = this.nextId;
+
                 const now = this.getTime();
                 for (const event of reservation.events) {
                     this.events.push({
-                        id: this.nextId,
+                        id: id,
                         time: start + event.offset,
                         resources: { ...event.resources }
                     });
@@ -212,9 +214,16 @@ export class ReservationBook {
                     if (action != null) {
                         this.setTimeout(() => action(), Math.max(0, start - now + event.offset));
                     }
-
-                    this.nextId++;
                 }
+
+                this.setTimeout(() => {
+                    for (let i = this.events.length - 1; i >= 0; i--) {
+                        if (this.events[i].id === id) {
+                            this.events.splice(i, 1);
+                        }
+                    }
+                }, Math.max(0, start - now + reservation.events[reservation.events.length - 1].offset));
+                this.nextId++;
 
                 return true;
             }
