@@ -4,6 +4,9 @@
     "global.d.ts",
     "src/**/*",
   ],
+  "exclude": [
+    "src/**/*.test.ts"
+  ],
   "compilerOptions": {
     "module": "esnext",
     "target": "esnext",

@@ -1,0 +1,18 @@
+{
+    "name": "Node.js & TypeScript",
+    "image": "mcr.microsoft.com/devcontainers/typescript-node:1-20-bullseye",
+    "runArgs": [
+        "--userns=keep-id",
+        "--network=host"
+    ],
+    "containerUser": "node",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "dbaeumer.vscode-eslint",
+                "Gruntfuggly.auto-snippet",
+                "bitburner.bitburner-vscode-integration"
+            ]
+        }
+    }
+}
