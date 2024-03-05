@@ -10,6 +10,7 @@ type ServerConnectionInfo = {
 type Server = {
     book: ReservationBook;
     rooted: boolean;
+    ram: number;
 } & ServerConnectionInfo;
 
 function getServers(ns: NS): ServerConnectionInfo[] {
@@ -117,6 +118,7 @@ export class ServerList {
                 ram -= this.ns.getScriptRam("runner.js");
             }
             server.book.set("ram", ram);
+            server.ram = ram;
         }
 
         setTimeout(() => this.refresh(), this.refreshFrequency);
@@ -125,16 +127,22 @@ export class ServerList {
     start() : void {
         const ss = getServers(this.ns).map(x => ({
             ...x,
-            book: new ReservationBook(undefined, undefined, this.log)
+            book: new ReservationBook(undefined, undefined, this.log),
+            rooted: false,
+            ram: 0
         } as Server));
         for (const s of ss) {
             this.servers[s.hostname] = s;
         }
-        setTimeout(() => this.refresh(), 0);
+        this.refresh();
     }
 
     getBook(hostname: string) : ReservationBook | undefined {
         return this.servers[hostname]?.book;
+    }
+
+    getRam(hostname: string) : number | undefined {
+        return this.servers[hostname]?.ram;
     }
 
     getHackable() : string[] {
@@ -143,9 +151,27 @@ export class ServerList {
             .map(x => x.hostname);
     }
 
-    getHackers() : string[] {
-        return Object.values(this.servers)
-            .filter(x => x.rooted)
-            .map(x => x.hostname);
+    getServers(options?: {
+        rooted?: boolean;
+        except?: string[];
+        sortBy?: "smallest" | "largest";
+    }) : string[] {
+        let s = Object.values(this.servers);
+        const except = options?.except;
+        if (except != null) {
+            s = s.filter(x => !except.includes(x.hostname));
+        }
+
+        if (options?.rooted) {
+            s = s.filter(x => x.rooted);
+        }
+
+        if (options?.sortBy === "smallest") {
+            s.sort((a, b) => b.ram - a.ram);
+        } else if (options?.sortBy === "largest") {
+            s.sort((a, b) => a.ram - b.ram);
+        }
+
+        return s.map(x => x.hostname);
     }
 }

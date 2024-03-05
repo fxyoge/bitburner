@@ -12,7 +12,7 @@ type ReservedEvent = {
 type ProposedEvent = {
     offset: number;
     resources: Partial<Resources>;
-    action?: () => void;
+    action?: () => void | Promise<void>;
 };
 
 type Proposition = {
@@ -29,9 +29,13 @@ type Reservation = {
     maxTime: number;
 };
 
-type ScheduleToken = {
+export type ScheduleClaim = {
+    cancel: () => void;
+};
+
+export type ScheduleToken = {
     availability: [number, number][];
-    claim: (offset: number) => boolean;
+    claim: (offset: number) => ScheduleClaim | null;
 };
 
 function getZeroResources(): Resources {
@@ -74,6 +78,10 @@ export class ReservationBook {
         this.baseResources[resource] = amount;
     }
 
+    get(resource: keyof Resources): number {
+        return this.baseResources[resource];
+    }
+
     private check(start: number, reservation: Reservation): boolean {
         let time = Math.min(this.events[0]?.time ?? start, start);
         
@@ -86,7 +94,7 @@ export class ReservationBook {
                 return false;
             }
 
-            while (ei < el) {;
+            while (ei < el) {
                 if (this.events[ei].time > rt) {
                     break;
                 } else {
@@ -162,12 +170,41 @@ export class ReservationBook {
         }
     }
 
+    getUtilization(resource: keyof Resources, slots: number, lengthMs: number) : number[] {
+        if (this.baseResources[resource] === 0) {
+            return Array(slots).fill(0); 
+        }
+
+        const runningTotal = { ...this.baseResources };
+        const timePerSlot = lengthMs / slots;
+        const now = this.getTime();
+
+        const ut: number[] = [];
+        let ei = 0;
+        const el = this.events.length;
+        for (let i = 0; i < slots; i++) {
+            while (ei < el) {
+                if (this.events[ei].time > (now + timePerSlot * i)) {
+                    break;
+                } else {
+                    addResources(runningTotal, this.events[ei].resources);
+                    ei++;
+                }
+            }
+            ut.push(this.baseResources[resource] - runningTotal[resource]);
+        }
+
+        return ut;
+    }
+
     schedule(proposition: Proposition): ScheduleToken | null {
         if (proposition.events.length === 0) {
             return {
                 availability: [],
                 claim: (offset) => {
-                    return true;
+                    return {
+                        cancel: () => {}
+                    };
                 }
             };
         }
@@ -204,7 +241,7 @@ export class ReservationBook {
             claim: (start) => {
                 try {
                     if (!this.check(start, reservation)) {
-                        return false;
+                        return null;
                     }
     
                     const id = this.nextId;
@@ -228,9 +265,14 @@ export class ReservationBook {
                     this.setTimeout(() => {
                         this.delete(id);
                     }, Math.max(0, start - now + reservation.events[reservation.events.length - 1].offset));
+                    
                     this.nextId++;
     
-                    return true;
+                    return {
+                        cancel: () => {
+                            this.delete(id);
+                        }
+                    };
                 } catch (err: any) {
                     this.log("RVB|%s errored: %s", reservation.name, err);
                     if ("stack" in err && err.stack) {
@@ -239,7 +281,7 @@ export class ReservationBook {
                     if ("cause" in err && err.cause) {
                         this.log("RVB|cause: %s", err.cause);
                     }
-                    return false;
+                    return null;
                 }
             }
         };

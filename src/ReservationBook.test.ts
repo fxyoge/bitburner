@@ -30,19 +30,19 @@ it("reserves more resources than the machine has", () => {
         (callback, ms) => queue.setTimeout(callback, ms),
         () => queue.getTime(),
         (format, ...values) => logs.push([format, ...values]));
-    book.set("cpu", 1);
+    book.set("ram", 1);
     
     const token = book.schedule({
         name: "san diego",
         events: [{
             offset: 0,
             resources: {
-                cpu: -2
+                ram: -2
             }
         }, {
             offset: 100,
             resources: {
-                cpu: 2
+                ram: 2
             }
         }],
         minOffset: 0,
@@ -58,7 +58,7 @@ it("generates a single block", () => {
         (callback, ms) => queue.setTimeout(callback, ms),
         () => queue.getTime(),
         (format, ...values) => logs.push([format, ...values]));
-    book.set("cpu", 10);
+    book.set("ram", 10);
     
     const state = [false, false];
     const token = book.schedule({
@@ -66,15 +66,15 @@ it("generates a single block", () => {
         events: [{
             offset: 0,
             resources: {
-                cpu: -2
+                ram: -2
             },
-            action: () => state[0] = true
+            action: () => { state[0] = true }
         }, {
             offset: 100,
             resources: {
-                cpu: 2
+                ram: 2
             },
-            action: () => state[1] = true
+            action: () => { state[1] = true }
         }],
         minOffset: 0,
         maxOffset: 1000
@@ -105,13 +105,13 @@ it("one block blocks another", () => {
         (callback, ms) => queue.setTimeout(callback, ms),
         () => queue.getTime(),
         (format, ...values) => logs.push([format, ...values]));
-    book.set("cpu", 3);
+    book.set("ram", 3);
     
     const state = [false, false, false, false];
     const tokenA = book.schedule({
         name: "apples",
-        events: [{ offset: 0,   resources: { cpu: -2 }, action: () => state[0] = true },
-                 { offset: 800, resources: { cpu:  2 }, action: () => state[1] = true }],
+        events: [{ offset: 0,   resources: { ram: -2 }, action: () => { state[0] = true } },
+                 { offset: 800, resources: { ram:  2 }, action: () => { state[1] = true } }],
         minOffset: 100,
         maxOffset: 1000
     });
@@ -125,8 +125,8 @@ it("one block blocks another", () => {
 
     const tokenB = book.schedule({
         name: "oranges",
-        events: [{ offset: 0,   resources: { cpu: -2 } },
-                 { offset: 800, resources: { cpu:  2 } }],
+        events: [{ offset: 0,   resources: { ram: -2 } },
+                 { offset: 800, resources: { ram:  2 } }],
         minOffset: 0,
         maxOffset: 1000
     });
@@ -141,13 +141,13 @@ it("can't schedule a block that would go over the max", () => {
         (callback, ms) => queue.setTimeout(callback, ms),
         () => queue.getTime(),
         (format, ...values) => logs.push([format, ...values]));
-    book.set("cpu", 3);
+    book.set("ram", 3);
     
     const state = [false, false, false, false];
     const tokenA = book.schedule({
         name: "garbage",
-        events: [{ offset: 0,   resources: { cpu: -2 }, action: () => state[0] = true },
-                 { offset: 800, resources: { cpu:  2 }, action: () => state[1] = true }],
+        events: [{ offset: 0,   resources: { ram: -2 }, action: () => { state[0] = true } },
+                 { offset: 800, resources: { ram:  2 }, action: () => { state[1] = true } }],
         minOffset: 400,
         maxOffset: 1000
     });
@@ -162,20 +162,20 @@ it("two blocks scheduled next to each other", () => {
         (callback, ms) => queue.setTimeout(callback, ms),
         () => queue.getTime(),
         (format, ...values) => logs.push([format, ...values]));
-    book.set("cpu", 3);
+    book.set("ram", 3);
     
     const state = [false, false, false, false];
     const tokenA = book.schedule({
         name: "apples 2",
-        events: [{ offset: 0,   resources: { cpu: -2 }, action: () => state[0] = true },
-                 { offset: 400, resources: { cpu:  2 }, action: () => state[1] = true }],
+        events: [{ offset: 0,   resources: { ram: -2 }, action: () => { state[0] = true } },
+                 { offset: 400, resources: { ram:  2 }, action: () => { state[1] = true } }],
         minOffset: 0,
         maxOffset: 1000
     });
 
     expect(tokenA?.availability).toEqual([[0, 600]]);
     const claimedA = tokenA?.claim(200);
-    expect(claimedA).toBeTruthy();
+    expect(claimedA).not.toBeNull();
 
     expect(queue.events[0].ms).toBe(200);
     expect(queue.events[1].ms).toBe(600);
@@ -183,15 +183,15 @@ it("two blocks scheduled next to each other", () => {
 
     const tokenB = book.schedule({
         name: "oranges 2",
-        events: [{ offset: 0,   resources: { cpu: -2 }, action: () => state[2] = true },
-                 { offset: 400, resources: { cpu:  2 }, action: () => state[3] = true }],
+        events: [{ offset: 0,   resources: { ram: -2 }, action: () => { state[2] = true } },
+                 { offset: 400, resources: { ram:  2 }, action: () => { state[3] = true } }],
         minOffset: 0,
         maxOffset: 1000
     });
 
     expect(tokenB?.availability).toEqual([[600, 600]]);
     const claimedB = tokenB?.claim(600);
-    expect(claimedB).toBeTruthy();
+    expect(claimedB).not.toBeNull();
 
     expect(queue.events[3].ms).toBe(600);
     expect(queue.events[4].ms).toBe(1000);
@@ -205,20 +205,20 @@ it("two blocks scheduled next to each other, in reverse order", () => {
         (callback, ms) => queue.setTimeout(callback, ms),
         () => queue.getTime(),
         (format, ...values) => logs.push([format, ...values]));
-    book.set("cpu", 3);
+    book.set("ram", 3);
     
     const state = [false, false, false, false];
     const tokenA = book.schedule({
         name: "apples 3",
-        events: [{ offset: 0,   resources: { cpu: -2 }, action: () => state[0] = true },
-                 { offset: 400, resources: { cpu:  2 }, action: () => state[1] = true }],
+        events: [{ offset: 0,   resources: { ram: -2 }, action: () => { state[0] = true } },
+                 { offset: 400, resources: { ram:  2 }, action: () => { state[1] = true } }],
         minOffset: 0,
         maxOffset: 1000
     });
 
     expect(tokenA?.availability).toEqual([[0, 600]]);
     const claimedA = tokenA?.claim(600);
-    expect(claimedA).toBeTruthy();
+    expect(claimedA).not.toBeNull();
 
     expect(queue.events[0].ms).toBe(600);
     expect(queue.events[1].ms).toBe(1000);
@@ -226,19 +226,63 @@ it("two blocks scheduled next to each other, in reverse order", () => {
 
     const tokenB = book.schedule({
         name: "oranges 3",
-        events: [{ offset: 0,   resources: { cpu: -2 }, action: () => state[2] = true },
-                 { offset: 400, resources: { cpu:  2 }, action: () => state[3] = true }],
+        events: [{ offset: 0,   resources: { ram: -2 }, action: () => { state[2] = true } },
+                 { offset: 400, resources: { ram:  2 }, action: () => { state[3] = true } }],
         minOffset: 0,
         maxOffset: 1000
     });
 
     expect(tokenB?.availability).toEqual([[0, 200]]);
     const claimedB = tokenB?.claim(200);
-    expect(claimedB).toBeTruthy();
+    expect(claimedB).not.toBeNull();
 
     expect(queue.events[3].ms).toBe(200);
     expect(queue.events[4].ms).toBe(600);
     expect(queue.events[5].ms).toBe(600);
+});
+
+it("can schedule hack and ram at the same time", () => {
+    const queue = new MockEventQueue();
+    const logs: [string, ...any][] = [];
+    const book = new ReservationBook(
+        (callback, ms) => queue.setTimeout(callback, ms),
+        () => queue.getTime(),
+        (format, ...values) => logs.push([format, ...values]));
+    book.set("hacks", 1);
+    book.set("ram", 3);
+    
+    const state = [false, false, false, false];
+    const tokenA = book.schedule({
+        name: "hacks",
+        events: [{ offset: 0,    resources: { hacks: -1 }, action: () => { state[0] = true } },
+                 { offset: 1000, resources: { hacks:  1 }, action: () => { state[1] = true } }],
+        minOffset: 0,
+        maxOffset: 1000
+    });
+
+    expect(tokenA?.availability).toEqual([[0, 0]]);
+    const claimedA = tokenA?.claim(0);
+    expect(claimedA).not.toBeNull();
+
+    expect(queue.events[0].ms).toBe(0);
+    expect(queue.events[1].ms).toBe(1000);
+    expect(queue.events[2].ms).toBe(1000);
+
+    const tokenB = book.schedule({
+        name: "ram",
+        events: [{ offset: 0,    resources: { ram: -2 }, action: () => { state[2] = true } },
+                 { offset: 1000, resources: { ram:  2 }, action: () => { state[3] = true } }],
+        minOffset: 0,
+        maxOffset: 1000
+    });
+
+    expect(tokenB?.availability).toEqual([[0, 0]]);
+    const claimedB = tokenB?.claim(0);
+    expect(claimedB).not.toBeNull();
+
+    expect(queue.events[3].ms).toBe(0);
+    expect(queue.events[4].ms).toBe(1000);
+    expect(queue.events[5].ms).toBe(1000);
 });
 
 // it("generates a block with contention", () => {

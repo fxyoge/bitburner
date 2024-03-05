@@ -2,13 +2,22 @@ import { NS } from "@ns";
 import type { Server } from "./types";
 import { getServers } from "/util";
 import { ServerList } from "/ServerList";
+import { ScheduleClaim } from "/ReservationBook";
 
 const payloads: Record<string, { ram: number }> = {};
 
 let ns: NS = undefined as any;
 let serverList: ServerList = undefined as any;
 
+const requests: {
+    script: string;
+}[] = [];
+
 const defaultOffsets = { minOffset: 500, maxOffset: 120000 };
+
+async function sleep(ms: number) : Promise<void> {
+    await new Promise(resolve => setTimeout(resolve, ms));
+}
 
 function firstAvailability(...availabilities: [number, number][][]) : number | null {
     const choices = availabilities.flatMap(x => x.map(x => x[0]));
@@ -28,6 +37,99 @@ function firstAvailability(...availabilities: [number, number][][]) : number | n
     return null;
 }
 
+async function waitPidDone(pid: number) {
+    while (true) {
+        await sleep(5000);
+        if (!ns.isRunning(pid)) {
+            return;
+        }
+    }
+}
+
+function scheduleInefficientScript(script: string, hostname: string, options: {
+    maxOutRam?: boolean;
+    threads?: number;
+    threadsOrMax?: number;
+}) : void {
+    const hackeeToken = serverList.getBook(hostname)?.schedule({
+        name: script,
+        events: [
+            { offset: 0, resources: { hacks: -1 } },
+            { offset: 60000*5, resources: { hacks: 1 } }],
+        ...defaultOffsets,
+        maxOffset: 60000*5+4000
+    });
+
+    if (hackeeToken == null) {
+        return;
+    }
+
+    let hackeeClaim: ScheduleClaim | null = null;
+    let hackerClaim: ScheduleClaim | null = null;
+
+    const scriptCost = ns.getScriptRam(script);
+
+    for (const hacker of serverList.getServers({
+        rooted: true,
+        sortBy: "largest"
+    })) {
+        let threads = 0;
+        if (options.threads != null) {
+            threads = options.threads;
+        } else if (options.maxOutRam) {
+            threads = Math.floor((serverList.getRam(hacker) ?? 0) / scriptCost);
+        } else if (options.threadsOrMax != null) {
+            threads = Math.min(
+                options.threadsOrMax,
+                Math.floor((serverList.getRam(hacker) ?? 0) / scriptCost)
+            );
+        }
+
+        if (threads <= 0) {
+            continue;
+        }
+
+        const hackerToken = serverList.getBook(hacker)?.schedule({
+            name: `${hacker} ${script}<${threads}> ${hostname}`,
+            events: [{
+                offset: 0, resources: { ram: -scriptCost * threads },
+                action: async () => {
+                    ns.scp(script, hostname);
+                    const pid = ns.exec(script, hacker, threads, hostname);
+                    await waitPidDone(pid);
+                    if (hackeeClaim != null) {
+                        hackeeClaim.cancel();
+                    }
+                    if (hackerClaim != null) {
+                        hackerClaim.cancel();
+                    }
+                }
+            }, { offset: 60000*5, resources: { ram: scriptCost * threads } }],
+            ...defaultOffsets,
+            maxOffset: 60000*5+4000
+        });
+
+        if (hackerToken == null) {
+            continue;
+        }
+
+        const start = firstAvailability(hackeeToken.availability, hackerToken.availability);
+        if (start == null) {
+            continue;
+        }
+
+        hackeeClaim = hackeeToken.claim(start);
+        if (hackeeClaim != null) {
+            hackerClaim = hackerToken.claim(start);
+            if (hackerClaim == null) {
+                hackeeClaim.cancel();
+            } else {
+                return;
+            }
+        }
+    }
+}
+
 /**
  * This queues up an inefficient schedule for hacking a server.
  * @param hostname The host to hack.
@@ -36,48 +138,60 @@ function inefficientHack(hostname: string) : void {
     const curSec = ns.getServerSecurityLevel(hostname);
     const minSec = ns.getServerMinSecurityLevel(hostname);
     if (curSec > minSec) {
-        const weakenCost = payloads["weaken.js"].ram;
-        const threadsToWeaken = Math.ceil((curSec - minSec) / 0.05);
-        const hackeeToken = serverList.getBook(hostname)?.schedule({
-            name: "weaken.js",
-            events: [
-                { offset: 0, resources: { hacks: -1 } },
-                { offset: 60000*3, resources: { hacks: 1 } }],
-                ...defaultOffsets,
-                maxOffset: 70000*3
-        });
-        if (hackeeToken == null) {
-            return;
-        }
-
-        for (const hacker of serverList.getHackers()) {
-            const hackerToken = serverList.getBook(hacker)?.schedule({
-                name: "weaken.js",
-                events: [{
-                    offset: 0, resources: { ram: -weakenCost * threadsToWeaken },
-                    action: () => {
-                        ns.printf("RUN|%s %d|weaken.js %s", hacker, threadsToWeaken, hostname);
-                        ns.exec("weaken.js", hacker, threadsToWeaken, hostname);
-                    }
-                }, { offset: 60000*3, resources: { ram: weakenCost * threadsToWeaken } }],
-                ...defaultOffsets,
-                maxOffset: 70000*3
-            });
-            if (hackerToken == null) {
-                continue;
-            }
-
-            const start = firstAvailability(hackeeToken.availability, hackeeToken.availability);
-            if (start == null) {
-                continue;
-            }
-
-            hackeeToken.claim(start);
-            hackerToken.claim(start);
-            return;
-        }
-
+        const threads = Math.ceil((curSec - minSec) / 0.05);
+        scheduleInefficientScript("weaken.js", hostname, { threadsOrMax: threads });
         return;
+    }
+
+    const curMoney = ns.getServerMoneyAvailable(hostname);
+    const maxMoney = ns.getServerMaxMoney(hostname);
+    if (curMoney < maxMoney) {
+        scheduleInefficientScript("grow.js", hostname, { maxOutRam: true });
+        return;
+    }
+
+    scheduleInefficientScript("hack.js", hostname, { maxOutRam: true });
+}
+
+function scheduleUtility(hostname: string, script: string) {
+    const scriptCost = ns.getScriptRam(script);
+
+    let claim: ScheduleClaim | null = null;
+    const token = serverList.getBook(hostname)?.schedule({
+        name: `${hostname} ${script}<1>`,
+        events: [{
+            offset: 0, resources: { ram: -scriptCost },
+            action: async () => {
+                ns.scp(script, hostname);
+                const pid = ns.exec(script, hostname, 1);
+                await waitPidDone(pid);
+                if (claim != null) {
+                    claim.cancel();
+                }
+            }
+        }, { offset: 1000, resources: { ram: scriptCost } }],
+        minOffset: 500,
+        maxOffset: 15000
+    });
+    if (token == null) {
+        return false;
+    }
+
+    const start = token.availability[0][0];
+    claim = token.claim(start);
+    if (claim != null) {
+        return true;
+    }
+
+    return false;
+}
+
+async function requestUpgrades() {
+    while (true) {
+        await sleep(15000);
+        requests.push({
+            script: "upgrades.js"
+        });
     }
 }
 
@@ -86,7 +200,7 @@ export async function main(_ns: NS) : Promise<void> {
     ns.disableLog("ALL");
     ns.clearLog();
 
-    for (const file of ["hack.js", "grow.js", "weaken.js"]) {
+    for (const file of ["hack.js", "grow.js", "weaken.js", "upgrades.js"]) {
         payloads[file] = {
             ram: ns.getScriptRam(file)
         };
@@ -103,10 +217,35 @@ export async function main(_ns: NS) : Promise<void> {
     });
     serverList.start();
 
+    for (const server of serverList.getServers({ except: ["home"] })) {
+        const ps = ns.ps(server);
+        for (const pid of ps.map(x => x.pid)) {
+            ns.kill(pid);
+        }
+    }
+
+    requestUpgrades();
+
     while (true) {
-        await ns.asleep(5000);
+        await sleep(2000);
+
+        for (const hostname of serverList.getServers({
+            rooted: true,
+            sortBy: "smallest"
+        })) {
+            const nextRequest = requests[0];
+            if (nextRequest != null && scheduleUtility(hostname, nextRequest.script)) {
+                requests.shift();
+            }
+        }
+
         for (const hostname of serverList.getHackable()) {
             inefficientHack(hostname);
+
+            // const ram = serverList.getBook(hostname)?.getUtilization("ram", 32, 1000);
+            // const hacks = serverList.getBook(hostname)?.getUtilization("hacks", 32, 1000);
+            // ns.printf("UTL|%s|ram   %s", hostname, ram?.map(x => Math.ceil(x * 9)).join(""));
+            // ns.printf("UTL|%s|hacks %s", hostname, hacks?.map(x => Math.ceil(x * 9)).join(""));
         }
     }
 }
