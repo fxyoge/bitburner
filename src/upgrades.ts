@@ -11,7 +11,7 @@ let servers: {
     gainIfCores: number | null;
 }[] = [];
 
-function getProductionRate(level: number, ram: number, cores: number): number {
+function getHacknodeProductionRate(level: number, ram: number, cores: number): number {
     return (
         (level * 1.5) *
         (Math.pow(1.035, ram - 1)) *
@@ -27,17 +27,17 @@ function refreshHacknetServer(index: number): void {
     const levelCost = ns.hacknet.getLevelUpgradeCost(index);
     const gainIfLevel = !Number.isFinite(levelCost)
         ? null
-        : (getProductionRate(stats.level + 1, stats.ram, stats.cores) - production) / levelCost;
+        : (getHacknodeProductionRate(stats.level + 1, stats.ram, stats.cores) - production) / levelCost;
 
     const ramCost = ns.hacknet.getRamUpgradeCost(index);
     const gainIfRam = !Number.isFinite(ramCost)
         ? null
-        : (getProductionRate(stats.level, stats.ram * 2, stats.cores) - production) / ramCost;
+        : (getHacknodeProductionRate(stats.level, stats.ram * 2, stats.cores) - production) / ramCost;
 
     const coresCost = ns.hacknet.getCoreUpgradeCost(index);
     const gainIfCores = !Number.isFinite(coresCost)
         ? null
-        : (getProductionRate(stats.level, stats.ram, stats.cores + 1) - production) / coresCost;
+        : (getHacknodeProductionRate(stats.level, stats.ram, stats.cores + 1) - production) / coresCost;
 
     servers[index] = {
         level: stats.level,
