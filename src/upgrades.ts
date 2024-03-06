@@ -92,29 +92,33 @@ function upgradeHacknet() {
     }
 
     for (let i = 0; i < 100; i++) {
-        const [action, index, gain] = getBestAction();
-        if (action == null) {
+        try {
+            const [action, index, gain] = getBestAction();
+            if (action == null) {
+                break;
+            }
+            
+            ns.printf("upgrading %s for hacknet node %d, for %f gain", action, index, gain);
+            if (action === "level") {
+                if (!ns.hacknet.upgradeLevel(index)) {
+                    break;
+                }
+            } else if (action === "cores") {
+                if (!ns.hacknet.upgradeCore(index)) {
+                    break;
+                }
+            } else if (action === "ram") {
+                if (!ns.hacknet.upgradeRam(index)) {
+                    break;
+                }
+            } else {
+                throw new Error("bruh");
+            }
+    
+            refreshHacknetServer(index);
+        } catch {
             break;
         }
-        
-        ns.printf("upgrading %s for hacknet node %d, for %f gain", action, index, gain);
-        if (action === "level") {
-            if (!ns.hacknet.upgradeLevel(index)) {
-                break;
-            }
-        } else if (action === "cores") {
-            if (!ns.hacknet.upgradeCore(index)) {
-                break;
-            }
-        } else if (action === "ram") {
-            if (!ns.hacknet.upgradeRam(index)) {
-                break;
-            }
-        } else {
-            throw new Error("bruh");
-        }
-
-        refreshHacknetServer(index);
     }
 }
 
