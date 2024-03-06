@@ -1,4 +1,4 @@
-import { NS } from "@ns";
+import { NS, Multipliers } from "@ns";
 
 let ns: NS = undefined as any;
 let servers: {
@@ -54,7 +54,7 @@ function getBestAction(): ["level" | "ram" | "cores" | null, number, number] {
     let bestAction: "level" | "ram" | "cores" | null = null;
     let bestIndex = -1;
     let bestGain = -10000;
-    
+
     for (let i = 0; i < servers.length; i++) {
         const server = servers[i];
         if (server.gainIfLevel != null && server.gainIfLevel > bestGain) {
@@ -79,8 +79,10 @@ function getBestAction(): ["level" | "ram" | "cores" | null, number, number] {
 
 function upgradeHacknet() {
     for (let i = 0; i < 10; i++) {
-        if (ns.hacknet.purchaseNode() >= 0) {
-            ns.print("purchased a new hacknet node!");
+        if (ns.hacknet.purchaseNode() < 0) {
+            break;
+        } else {
+            ns.print("bought a new hacknet node");
         }
     }
 

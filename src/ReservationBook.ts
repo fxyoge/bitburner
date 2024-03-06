@@ -1,6 +1,8 @@
 type Resources = {
     ram: number;
     hacks: number;
+    security: number;
+    growLeft: number;
 };
 
 type ReservedEvent = {
@@ -42,6 +44,8 @@ function getZeroResources(): Resources {
     return {
         ram: 0,
         hacks: 0,
+        security: 0,
+        growLeft: 0,
     };
 };
 
