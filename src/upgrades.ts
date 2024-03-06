@@ -89,7 +89,7 @@ function upgradeHacknet() {
         refreshHacknetServer(i);
     }
 
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 100; i++) {
         const [action, index, gain] = getBestAction();
         if (action == null) {
             break;
