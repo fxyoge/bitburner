@@ -8,13 +8,13 @@ type Resources = {
 type ReservedEvent = {
     id: number;
     time: number;
-    resources: Partial<Resources>;
+    onCalc?: (res: Resources) => boolean;
 };
 
 type ProposedEvent = {
     offset: number;
-    resources: Partial<Resources>;
     action?: () => void | Promise<void>;
+    onCalc?: (res: Resources) => boolean;
 };
 
 type Proposition = {
@@ -49,14 +49,8 @@ function getZeroResources(): Resources {
     };
 };
 
-function addResources(a: Resources, b: Partial<Resources>): void {
-    for (const k in b) {
-        const key = k as keyof Resources;
-        const value = b[key];
-        if (value != null) {
-            a[key] += value;
-        }
-    }
+function defaultExpectation(res: Resources): boolean {
+    return res.ram >= 0 && res.hacks >= 0;
 }
 
 export class ReservationBook {
@@ -99,19 +93,19 @@ export class ReservationBook {
             }
 
             while (ei < el) {
-                if (this.events[ei].time > rt) {
+                if (this.events[ei].time >= rt) {
                     break;
                 } else {
-                    addResources(res, this.events[ei].resources);
+                    const success = this.events[ei].onCalc?.(res);
+                    if (!(success ?? true) || !defaultExpectation(res)) {
+                        return false;
+                    }
                     ei++;
                 }
             }
-            addResources(res, re.resources);
-            for (const k in res) {
-                const key = k as keyof Resources;
-                if (res[key] < 0) {
-                    return false;
-                }
+            const success = re.onCalc?.(res);
+            if (!(success ?? true) || !defaultExpectation(res)) {
+                return false;
             }
         }
 
@@ -122,6 +116,8 @@ export class ReservationBook {
         const reservationLength = reservation.events[reservation.events.length - 1].offset - reservation.events[0].offset;
         const reservationOffsets = new Set(reservation.events.map(x => x.offset));
         const eventTimes = new Set(this.events.map(x => x.time));
+        eventTimes.add(reservation.minTime);
+        eventTimes.add(reservation.maxTime);
 
         const startingPointsSet = new Set<number>();
         for (const ro of reservationOffsets) {
@@ -130,36 +126,34 @@ export class ReservationBook {
                 if (sp >= reservation.minTime) {
                     startingPointsSet.add(sp);
                 }
+                if ((sp - 1) >= reservation.minTime) {
+                    startingPointsSet.add(sp - 1);
+                }
+                if ((sp + 1) >= reservation.minTime) {
+                    startingPointsSet.add(sp + 1);
+                }
             }
         }
 
-        startingPointsSet.add(reservation.minTime);
-        startingPointsSet.add(reservation.maxTime);
-
         const startingPoints = [...startingPointsSet].sort((a, b) => a - b);
+
         const availability: [number, number][] = [];
 
-        let start: number | undefined;
+        let start: number | null = null;
+        let end: number | null = null;
         for (const sp of startingPoints) {
             if (this.check(sp, reservation)) {
                 if (start == null) {
                     start = sp;
+                } else {
+                    end = sp;
                 }
             } else {
-                if (start != null) {
-                    const end = sp - reservationLength;
-                    if (end >= start) {
-                        availability.push([start, end]);
-                    }
-                    start = undefined;
+                if (start != null && end != null) {
+                    availability.push([start, end]);
                 }
-            }
-        }
-
-        if (start != null) {
-            const end = reservation.maxTime - reservationLength;
-            if (end >= start) {
-                availability.push([start, end]);
+                start = null;
+                end = null;
             }
         }
 
@@ -191,7 +185,7 @@ export class ReservationBook {
                 if (this.events[ei].time > (now + timePerSlot * i)) {
                     break;
                 } else {
-                    addResources(runningTotal, this.events[ei].resources);
+                    this.events[ei].onCalc?.(runningTotal);
                     ei++;
                 }
             }
@@ -255,14 +249,23 @@ export class ReservationBook {
                         this.events.push({
                             id: id,
                             time: start + event.offset,
-                            resources: { ...event.resources }
+                            onCalc: event.onCalc
                         });
                         this.events.sort((a, b) => a.time - b.time);
+
                         const action = event.action;
-                        if (action != null) {
+                        const onCalc = event.onCalc;
+
+                        if (action != null || onCalc != null) {
                             const ms = Math.max(0, start - now + event.offset);
                             this.log("RVB|%s scheduled in %d ms", proposition.name, ms);
-                            this.setTimeout(() => action(), ms);
+                            if (action != null && onCalc != null) {
+                                this.setTimeout(() => { action(); onCalc(this.baseResources); }, ms);
+                            } else if (action != null) {
+                                this.setTimeout(() => { action(); }, ms);
+                            } else if (onCalc != null) {
+                                this.setTimeout(() => { onCalc(this.baseResources); }, ms);
+                            }
                         }
                     }
     

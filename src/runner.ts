@@ -53,8 +53,8 @@ function scheduleInefficientScript(script: string, hostname: string, options: {
     const hackeeToken = serverList.getBook(hostname)?.schedule({
         name: script,
         events: [
-            { offset: 0, resources: { hacks: -1 } },
-            { offset: 60000*5, resources: { hacks: 1 } }],
+            { offset: 0, onCalc: (r) => { r.hacks -= 1; return true; } },
+            { offset: 60000*5, onCalc: (r) => { r.hacks += 1; return true; } }],
         ...defaultOffsets,
         maxOffset: 60000*5+4000
     });
@@ -91,19 +91,12 @@ function scheduleInefficientScript(script: string, hostname: string, options: {
         const hackerToken = serverList.getBook(hacker)?.schedule({
             name: `${hacker} ${script}<${threads}> ${hostname}`,
             events: [{
-                offset: 0, resources: { ram: -scriptCost * threads },
-                action: async () => {
+                offset: 0, onCalc: (r) => { r.ram -= (scriptCost * threads); return true; },
+                action: () => {
                     ns.scp(script, hostname);
-                    const pid = ns.exec(script, hacker, threads, hostname);
-                    await waitPidDone(pid);
-                    if (hackeeClaim != null) {
-                        hackeeClaim.cancel();
-                    }
-                    if (hackerClaim != null) {
-                        hackerClaim.cancel();
-                    }
+                    ns.exec(script, hacker, threads, hostname);
                 }
-            }, { offset: 60000*5, resources: { ram: scriptCost * threads } }],
+            }, { offset: 60000*5, onCalc: (r) => { r.ram += (scriptCost * threads); return true; } }],
             ...defaultOffsets,
             maxOffset: 60000*5+4000
         });
@@ -159,16 +152,12 @@ function scheduleUtility(hostname: string, script: string) {
     const token = serverList.getBook(hostname)?.schedule({
         name: `${hostname} ${script}<1>`,
         events: [{
-            offset: 0, resources: { ram: -scriptCost },
-            action: async () => {
+            offset: 0, onCalc: (r) => { r.ram -= scriptCost; return true; },
+            action: () => {
                 ns.scp(script, hostname);
-                const pid = ns.exec(script, hostname, 1);
-                await waitPidDone(pid);
-                if (claim != null) {
-                    claim.cancel();
-                }
+                ns.exec(script, hostname, 1);
             }
-        }, { offset: 1000, resources: { ram: scriptCost } }],
+        }, { offset: 1000, onCalc: (r) => { r.ram += scriptCost; return true; } }],
         minOffset: 500,
         maxOffset: 15000
     });
