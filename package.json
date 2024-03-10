@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "watch": "npx tsc -w",
+    "watch": "npx rollup -c -w",
     "lint": "eslint . --ext .ts",
     "test": "jest",
     "test-watch": "jest --watch",
@@ -20,14 +20,20 @@
   },
   "homepage": "https://github.com/bitburner-official/vscode-template#readme",
   "devDependencies": {
+    "@rollup/plugin-node-resolve": "^15.2.3",
+    "@rollup/plugin-typescript": "^11.1.6",
     "@types/jest": "^29.5.12",
     "@types/lodash": "^4.14.178",
     "@types/node": "^16.4.3",
     "@typescript-eslint/eslint-plugin": "^4.28.4",
     "@typescript-eslint/parser": "^4.28.4",
     "eslint": "^7.31.0",
+    "rollup": "^4.12.1",
     "ts-jest": "^29.1.2",
     "ts-node": "^9.1.1",
     "typescript": "^4.3.5"
+  },
+  "dependencies": {
+    "@tensorflow/tfjs": "^4.17.0"
   }
 }
