@@ -1,5 +1,9 @@
 import { NS, Multipliers } from "@ns";
 
+async function sleep(ms: number) : Promise<void> {
+    await new Promise(resolve => setTimeout(resolve, ms));
+}
+
 let ns: NS = undefined as any;
 let servers: {
     level: number;
@@ -11,11 +15,12 @@ let servers: {
     gainIfCores: number | null;
 }[] = [];
 
-function getHacknodeProductionRate(level: number, ram: number, cores: number): number {
+function getHacknodeProductionRate(level: number, ram: number, cores: number, mult: number): number {
     return (
         (level * 1.5) *
         (Math.pow(1.035, ram - 1)) *
-        ((cores + 5) / 6)
+        ((cores + 5) / 6) *
+        mult
     );
 }
 
@@ -24,20 +29,22 @@ function refreshHacknetServer(index: number): void {
 
     const production = stats.production;
 
+    const mult = ns.getHacknetMultipliers().production;
+
     const levelCost = ns.hacknet.getLevelUpgradeCost(index);
     const gainIfLevel = !Number.isFinite(levelCost)
         ? null
-        : (getHacknodeProductionRate(stats.level + 1, stats.ram, stats.cores) - production) / levelCost;
+        : (getHacknodeProductionRate(stats.level + 1, stats.ram, stats.cores, mult) - production) / levelCost;
 
     const ramCost = ns.hacknet.getRamUpgradeCost(index);
     const gainIfRam = !Number.isFinite(ramCost)
         ? null
-        : (getHacknodeProductionRate(stats.level, stats.ram * 2, stats.cores) - production) / ramCost;
+        : (getHacknodeProductionRate(stats.level, stats.ram * 2, stats.cores, mult) - production) / ramCost;
 
     const coresCost = ns.hacknet.getCoreUpgradeCost(index);
     const gainIfCores = !Number.isFinite(coresCost)
         ? null
-        : (getHacknodeProductionRate(stats.level, stats.ram, stats.cores + 1) - production) / coresCost;
+        : (getHacknodeProductionRate(stats.level, stats.ram, stats.cores + 1, mult) - production) / coresCost;
 
     servers[index] = {
         level: stats.level,
@@ -97,8 +104,9 @@ function upgradeHacknet() {
             if (action == null) {
                 break;
             }
-            
+
             ns.printf("upgrading %s for hacknet node %d, for %f gain", action, index, gain);
+
             if (action === "level") {
                 if (!ns.hacknet.upgradeLevel(index)) {
                     break;
@@ -114,7 +122,7 @@ function upgradeHacknet() {
             } else {
                 throw new Error("bruh");
             }
-    
+            
             refreshHacknetServer(index);
         } catch {
             break;
@@ -123,11 +131,24 @@ function upgradeHacknet() {
 }
 
 function upgradeServers() {
-    const pservers = ns.getPurchasedServers();
+    let pservers = ns.getPurchasedServers();
     for (let i = pservers.length; i < ns.getPurchasedServerLimit(); i++) {
         const hostname = ns.purchaseServer("pserv-0", 2);
         if (hostname !== "") {
             ns.print("purchased a new server!");
+        }
+    }
+
+    pservers = ns.getPurchasedServers();
+    const maxRam = ns.getPurchasedServerMaxRam();
+    for (const pserver of pservers) {
+        const currentRam = ns.getServerMaxRam(pserver);
+        if (currentRam >= maxRam) {
+            continue;
+        }
+
+        if (ns.upgradePurchasedServer(pserver, currentRam * 2)) {
+            ns.printf("upgraded %s to %d ram", pserver, currentRam * 2);
         }
     }
 }
@@ -137,6 +158,9 @@ export async function main(_ns: NS) : Promise<void> {
     ns.disableLog("ALL");
     ns.clearLog();
 
-    upgradeServers();
-    upgradeHacknet();
+    while (true) {
+        upgradeServers();
+        upgradeHacknet();
+        await sleep(5000);
+    }
 }

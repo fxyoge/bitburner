@@ -8,9 +8,11 @@ type ServerConnectionInfo = {
 };
 
 type Server = {
-    book: ReservationBook;
+    initialized: boolean;
     rooted: boolean;
     ram: number;
+    reqHackingLevel: number;
+    maxMoney: number;
 } & ServerConnectionInfo;
 
 function getServers(ns: NS): ServerConnectionInfo[] {
@@ -46,25 +48,21 @@ const hacks: Record<string, (ns: NS, target: string) => void> = {
 
 export class ServerList {
     private readonly ns: NS;
-    private readonly payloads: string[];
     private readonly refreshFrequency: number;
-    private readonly unhackable: string[];
 
     private readonly log: (format: string, ...values: any[]) => void;
 
     private servers: Record<string, Server> = {};
 
+    private readonly onAnyUpdated: (() => (void | Promise<void>))[] = [];
+
     constructor(opts: {
         ns: NS;
-        payloads: string[];
         refreshFrequency: number;
-        unhackable: string[];
         log?: (format: string, ...values: any[]) => void;
     }) {
         this.ns = opts.ns;
-        this.payloads = opts.payloads;
         this.refreshFrequency = opts.refreshFrequency;
-        this.unhackable = opts.unhackable;
         this.log = opts.log ?? ((format, ...values) => {});
     }
 
@@ -91,34 +89,51 @@ export class ServerList {
             }
         }
 
-        try {
-            for (const payload of this.payloads) {
-                this.ns.scp(payload, hostname);
-            }
-        } catch {
-            return false;
-        }
-
         this.log("SVL|set up %s", hostname);
         return true;
     }
 
     private refresh() : void {
+        let updated = false;
+
         for (const hostname in this.servers) {
             const server = this.servers[hostname];
+            if (!server.initialized) {
+                server.initialized = true;
+                updated = true;
+            }
+
+            const reqHackingLevel = this.ns.getServerRequiredHackingLevel(hostname);
+            if (server.reqHackingLevel !== reqHackingLevel) {
+                server.reqHackingLevel = reqHackingLevel;
+                updated = true;
+            }
+
+            const maxMoney = this.ns.getServerMaxMoney(hostname);
+            if (server.maxMoney !== maxMoney) {
+                server.maxMoney = maxMoney;
+                updated = true;
+            }
+
             if (!server.rooted) {
                 const success = this.setupServer(hostname);
                 if (success) {
                     server.rooted = true;
-                    server.book.set("hacks", 1);
+                    updated = true;
                 }
             }
-            let ram = this.ns.getServerMaxRam(hostname);
-            if (hostname === "home") {
-                ram -= this.ns.getScriptRam("runner.js");
+
+            const ram = this.ns.getServerMaxRam(hostname);
+            if (server.ram !== ram) {
+                server.ram = ram;
+                updated = true;
             }
-            server.book.set("ram", ram);
-            server.ram = ram;
+        }
+
+        if (updated) {
+            for (const fn of this.onAnyUpdated) {
+                setTimeout(() => fn(), 0);
+            }
         }
 
         setTimeout(() => this.refresh(), this.refreshFrequency);
@@ -127,9 +142,9 @@ export class ServerList {
     start() : void {
         const ss = getServers(this.ns).map(x => ({
             ...x,
-            book: new ReservationBook(undefined, undefined, this.log),
             rooted: false,
-            ram: 0
+            ram: 0,
+            initialized: false
         } as Server));
         for (const s of ss) {
             this.servers[s.hostname] = s;
@@ -137,25 +152,19 @@ export class ServerList {
         this.refresh();
     }
 
-    getBook(hostname: string) : ReservationBook | undefined {
-        return this.servers[hostname]?.book;
-    }
-
     getRam(hostname: string) : number | undefined {
         return this.servers[hostname]?.ram;
     }
 
-    getHackable() : string[] {
-        return Object.values(this.servers)
-            .filter(x => x.rooted && !this.unhackable.includes(x.hostname))
-            .map(x => x.hostname);
+    getServer(hostname: string): Server | undefined {
+        return this.servers[hostname];
     }
 
     getServers(options?: {
         rooted?: boolean;
         except?: string[];
         sortBy?: "smallest" | "largest";
-    }) : string[] {
+    }): Server[] {
         let s = Object.values(this.servers);
         const except = options?.except;
         if (except != null) {
@@ -167,11 +176,15 @@ export class ServerList {
         }
 
         if (options?.sortBy === "smallest") {
-            s.sort((a, b) => b.ram - a.ram);
-        } else if (options?.sortBy === "largest") {
             s.sort((a, b) => a.ram - b.ram);
+        } else if (options?.sortBy === "largest") {
+            s.sort((a, b) => b.ram - a.ram);
         }
 
-        return s.map(x => x.hostname);
+        return s;
+    }
+
+    on(event: "anyUpdated", fn: () => (void | Promise<void>)) {
+        this.onAnyUpdated.push(fn);
     }
 }
